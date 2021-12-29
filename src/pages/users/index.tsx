@@ -1,53 +1,44 @@
-import Link from "next/link";
-import { useEffect } from "react";
+import NextLink from "next/link";
+import { useEffect, useState } from "react";
 
-import { useQuery } from 'react-query'
-import { Box, Button, Checkbox, Flex, Heading, Icon, Text, Table, Tbody, Td, Th, Thead, Tr, useBreakpointValue, Spinner } from "@chakra-ui/react";
+import { Box, Button, Checkbox, Flex, Heading, Icon, Text, Table, Tbody, Td, Th, Thead, Tr, useBreakpointValue, Spinner, Link } from "@chakra-ui/react";
 import { RiAddLine, RiPencilLine } from "react-icons/ri";
-
 
 import { Header } from "../../components/Header";
 import { Pagination } from "../../components/Pagination";
 import { Sidebar } from "../../components/Sidebar";
+import { queryClient } from "../../services/queryClient";
+import { getUsers, useUsers } from "../../services/hooks/useUsers";
+import { User } from "../../services/types/User";
+import { api } from "../../services/api";
+import { GetServerSideProps } from "next";
 
-type User = {
-    id: string;
-    name: string;
-    email: string;
-    createdAt: string;
+
+interface UsersListProps {
+    users: User[]
 }
 
-export default function UserList() {
-
-    const { data, isLoading, error } = useQuery('users', async () => {
-        const response = await fetch('http://localhost:3000/api/users')
-        const data = await response.json()
-
-        const users  = data.users.map((user: User) => {
-            return {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                createdAt: new Date(user.createdAt).toLocaleDateString('pt-br', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric',
-                }),
-            }
-        }
-        ) as User[]
-        return users
+export default function UserList({ users }: UsersListProps) {
+    const [page, setPage] = useState(1)
+    const { data, isLoading, error, isRefetching } = useUsers(page, {
+        initialData: users,
     })
-
 
     const isWideVersion = useBreakpointValue({
         base: false,
         lg: true,
     }) as boolean
 
-    useEffect(() => {
 
-    }, [])
+    async function handlePrefetchUser(userId: string) {
+        await queryClient.prefetchQuery(['user', userId], async () => {
+            const response = await api.get(`users/${userId}`)
+            return response.data
+        }, {
+            staleTime: 1000 * 60 * 10 // 10 minutos
+        })
+
+    }
 
     return (
         <Box>
@@ -56,9 +47,12 @@ export default function UserList() {
                 <Sidebar />
                 <Box flex='1' borderRadius={8} bg='gray.800' p='8'>
                     <Flex mb='8' justify='space-between' align='center'>
-                        <Heading size='lg' fontWeight='normal'>Usuários</Heading>
+                        <Heading size='lg' fontWeight='normal'>
+                            Usuários
+                            {isRefetching && <Spinner ml='4' size='sm' color='gray.500' />}
+                        </Heading>
 
-                        <Link href='/users/create' passHref>
+                        <NextLink href='/users/create' passHref>
                             <Button
                                 as='a'
                                 size='sm'
@@ -68,7 +62,7 @@ export default function UserList() {
                             >
                                 Criar novo usuário
                             </Button>
-                        </Link>
+                        </NextLink>
                     </Flex>
 
                     {isLoading ? (
@@ -93,36 +87,44 @@ export default function UserList() {
                                     </Tr>
                                 </Thead>
                                 <Tbody>
-                                    {data && data.map(user => {
+                                    {data && data.users.map((user: User) => {
                                         return (
                                             <Tr key={user.id}>
-                                            <Td px={['4', '4', '6']}>
-                                                <Checkbox colorScheme='pink' />
-                                            </Td>
-                                            <Td>
-                                                <Box>
-                                                    <Text fontWeight='bold'>{user.name}</Text>
-                                                    <Text fontSize='sm' color='gray.300'>{user.email}</Text>
-                                                </Box>
-                                            </Td>
-                                            {isWideVersion && <Td>{user.createdAt}</Td>}
-                                            {isWideVersion && <Td>
-                                                <Button
-                                                    as='a'
-                                                    size='sm'
-                                                    fontSize='sm'
-                                                    colorScheme='pink'
-                                                    leftIcon={<Icon as={RiPencilLine} fontSize='16' />}
-                                                >
-                                                    Editar
-                                                </Button>
-                                            </Td>}
-                                        </Tr>
+                                                <Td px={['4', '4', '6']}>
+                                                    <Checkbox colorScheme='pink' />
+                                                </Td>
+                                                <Td>
+                                                    <Box>
+                                                        <Link color='purple.400' onMouseEnter={() => handlePrefetchUser(user.id)}>
+                                                            <Text fontWeight='bold'>{user.name}</Text>
+                                                        </Link>
+                                                        <Text fontSize='sm' color='gray.300'>{user.email}</Text>
+                                                    </Box>
+                                                </Td>
+                                                {isWideVersion && <Td>{user.createdAt}</Td>}
+                                                {isWideVersion && <Td>
+                                                    <Button
+                                                        as='a'
+                                                        size='sm'
+                                                        fontSize='sm'
+                                                        colorScheme='pink'
+                                                        leftIcon={<Icon as={RiPencilLine} fontSize='16' />}
+                                                    >
+                                                        Editar
+                                                    </Button>
+                                                </Td>}
+                                            </Tr>
                                         )
                                     })}
                                 </Tbody>
                             </Table>
-                            <Pagination />
+                            {data &&
+                                <Pagination
+                                    totalCountOfRegisters={data.totalCount}
+                                    currentPage={page}
+                                    onPageChange={setPage}
+                                />
+                            }
                         </>
                     )}
                 </Box>
@@ -130,3 +132,15 @@ export default function UserList() {
         </Box>
     )
 }
+
+// export const getServerSideProps: GetServerSideProps =  async () => {
+    
+//     const {users} = await getUsers(1)
+
+//     return {
+//         props:
+//         {
+//             users,
+//         }
+//     }
+// }
